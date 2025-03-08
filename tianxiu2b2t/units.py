@@ -75,6 +75,17 @@ TIME_UNITS_DICT = {
     'm': 60,
     'h': 60,
 }
+NUMBER_UNITS_DICT = {
+    '': 1,
+    'K': 1e3,
+    'M': 1e6,
+    'G': 1e9,
+    'T': 1e12,
+    'P': 1e15,
+    'E': 1e18,
+    'Z': 1e21,
+    'Y': 1e24,
+}
 
 def parse_time_units(n: str) -> float:
     if n is None or n == '':
@@ -93,3 +104,22 @@ def parse_time_units(n: str) -> float:
             raise ValueError(f"Invalid unit '{unit}' in time string")
     
     return total_seconds / 1e-9
+
+def parse_number_units(n: str) -> float:
+    if n is None or n == '':
+        return 0.0
+    if n.lower() == "inf":
+        return math.inf
+    matches = re.findall(r'([\d.]+)\s*([a-zA-Z]*)', n)
+
+    total = 0.0
+    for match in matches:
+        value_str, unit = match
+        unit = unit.upper()
+        value = float(value_str)
+        if unit in NUMBER_UNITS_DICT:
+            total += value * NUMBER_UNITS_DICT[unit]
+        else:
+            raise ValueError(f"Invalid unit '{unit}' in time string")
+
+    return total
