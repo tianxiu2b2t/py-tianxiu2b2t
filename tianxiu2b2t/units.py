@@ -1,4 +1,5 @@
 import datetime
+import math
 import re
 
 
@@ -76,9 +77,10 @@ TIME_UNITS_DICT = {
 }
 
 def parse_time_units(n: str) -> float:
-    # 定义时间单位的字典
-    
-    # 使用正则表达式匹配时间字符串中的各个部分
+    if n is None or n == '':
+        return 0.0
+    if n.lower() == "inf":
+        return math.inf
     matches = re.findall(r'([\d.]+)([a-zA-Zμ]+)', n)
     
     total_seconds = 0.0
