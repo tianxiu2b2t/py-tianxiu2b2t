@@ -9,7 +9,7 @@ setup(
     author_email='administrator@ttb-network.top',
     license='MIT',
     packages=[
-        'src/anyio',
-        'src/cache'
+        'tianxiu2b2t/anyio',
+        'tianxiu2b2t/cache'
     ],
 )
