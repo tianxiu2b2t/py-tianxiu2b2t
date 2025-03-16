@@ -5,19 +5,13 @@ import anyio.abc
 
 
 class FixedSocketListener(
-    anyio.abc.SocketListener
+    anyio.abc.Listener
 ):
     def __init__(
         self,
-        listener: anyio.abc.SocketListener
+        listener: anyio.abc.Listener
     ):
         self._listener = listener
-
-    async def accept(self) -> anyio.abc.SocketStream:
-        try:
-            return await self._listener.accept()
-        except Exception as e:
-            raise e
         
     async def serve(
         self,
