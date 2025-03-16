@@ -21,14 +21,14 @@ class FixedSocketListener(
         
     async def serve(
         self,
-        handler: Callable[[anyio.abc.SocketStream], Any]
+        handler: Callable[[anyio.abc.SocketStream], Any],
+        task_group: anyio.abc.TaskGroup | None = None,
     ) -> None:
-        async with anyio.create_task_group() as task_group:
-            while True:
-                try:
-                    await self._listener.serve(handler, task_group)
-                except asyncio.CancelledError:
-                    break
+        while True:
+            try:
+                await self._listener.serve(handler, task_group)
+            except asyncio.CancelledError:
+                break
 
     async def aclose(self) -> None:
         await self._listener.aclose()
