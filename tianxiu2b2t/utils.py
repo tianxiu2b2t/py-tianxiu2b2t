@@ -15,8 +15,6 @@ class Runtime:
         self._perf_counter_ns = time.perf_counter_ns()
         self._monotonic_ns = time.monotonic_ns()
 
-        print(time.process_time_ns())
-
     def perf_counter(self):
         return self.perf_counter_ns() / 1e9
     
