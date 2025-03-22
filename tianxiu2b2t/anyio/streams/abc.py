@@ -31,6 +31,14 @@ class BufferedByteStream(
             buf += await self.pre_receive(n - len(buf))
         return buf
 
+    async def pre_readuntil(self, separator: bytes) -> bytes:
+        buf = b''
+        while separator not in buf:
+            buf += await self.pre_receive()
+        data, buf = buf.split(separator, 1)
+        self.pre_buffers.appendleft(buf)
+        return data + separator
+
     async def receive(self, max_bytes: int = 65536) -> bytes:
         if len(self.buffers) > 0:
             return _read_bytes(
@@ -48,7 +56,14 @@ class BufferedByteStream(
         while len(buf) < n:
             buf += await self.receive(n - len(buf))
         return buf
-            
+    
+    async def readuntil(self, separator: bytes) -> bytes:
+        buf = b''
+        while separator not in buf:
+            buf += await self.receive()
+        data, buf = buf.split(separator, 1)
+        self.buffers.appendleft(buf)
+        return data + separator
 
     async def send(self, data: bytes) -> None:
         await self.stream.send(data)
