@@ -92,7 +92,7 @@ NUMBER_UNITS_DICT = {
 
 def parse_time_units(n: str) -> float:
     """
-        to nanoseconds
+        to seconds
     """
     if n is None or n == '':
         return 0.0
