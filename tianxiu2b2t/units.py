@@ -67,16 +67,16 @@ def format_datetime_from_timestamp(n: float) -> str:
     return datetime.datetime.fromtimestamp(n).strftime('%Y-%m-%d %H:%M:%S')
 
 TIME_UNITS_DICT = {
-    'ns': 1,
-    'μs': 1e3,
-    'ms': 1e6,
-    's': 1e9,
-    'min': 60 * 1e9,
-    'm': 60 * 1e9,
-    'h': 60 * 60 * 1e9,
-    'd': 24 * 60 * 60 * 1e9,
-    'w': 7 * 24 * 60 * 60 * 1e9,
-    'mo': 30 * 24 * 60 * 60 * 1e9,
+    'ns': 1e-9,
+    'μs': 1e-6,
+    'ms': 1e-3,
+    's': 1,
+    'min': 60,
+    'm': 60,
+    'h': 3600,
+    'd': 86400,
+    'w': 7 * 86400,
+    'mo': 30 * 86400,
 }
 NUMBER_UNITS_DICT = {
     '': 1,
@@ -95,12 +95,12 @@ def parse_time_units(n: str) -> float:
         to seconds
     """
     if n is None or n == '':
-        return 0.0
+        return 0
     if n.lower() == "inf":
         return math.inf
     matches = re.findall(r'([\d.]+)([a-zA-Zμ]+)', n)
     
-    total_seconds = 0.0
+    total_seconds = 0
     for match in matches:
         value_str, unit = match
         value = float(value_str)
@@ -109,7 +109,7 @@ def parse_time_units(n: str) -> float:
         else:
             raise ValueError(f"Invalid unit '{unit}' in time string")
     
-    return total_seconds / 1e-9
+    return total_seconds
 
 def parse_number_units(n: str) -> float:
     if n is None or n == '':
