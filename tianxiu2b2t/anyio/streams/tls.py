@@ -124,6 +124,7 @@ class AutoTLSListener(
         
         await self.listener.serve(
             wrapper,
+            task_group
         )
 
     async def aclose(self) -> None:

@@ -69,11 +69,14 @@ def format_datetime_from_timestamp(n: float) -> str:
 TIME_UNITS_DICT = {
     'ns': 1,
     'μs': 1e3,
-    'ms': 1e3,
-    's': 1e3,
-    'min': 60,
-    'm': 60,
-    'h': 60,
+    'ms': 1e6,
+    's': 1e9,
+    'min': 60 * 1e9,
+    'm': 60 * 1e9,
+    'h': 60 * 60 * 1e9,
+    'd': 24 * 60 * 60 * 1e9,
+    'w': 7 * 24 * 60 * 60 * 1e9,
+    'mo': 30 * 24 * 60 * 60 * 1e9,
 }
 NUMBER_UNITS_DICT = {
     '': 1,
@@ -88,6 +91,9 @@ NUMBER_UNITS_DICT = {
 }
 
 def parse_time_units(n: str) -> float:
+    """
+        to nanoseconds
+    """
     if n is None or n == '':
         return 0.0
     if n.lower() == "inf":
