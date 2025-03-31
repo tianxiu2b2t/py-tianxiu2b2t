@@ -1,8 +1,12 @@
 from collections import deque
-from typing import Callable, Mapping, TypeVar
+from typing import Any, Callable, Mapping, TypeVar, final, overload
+from anyio import TypedAttributeLookupError
 import anyio.abc
 
 T_Attr = TypeVar('T_Attr')
+T_Value = TypeVar('T_Value')
+T_Default = TypeVar("T_Default")
+undefined = object()
 
 class BufferedByteStream(
     anyio.abc.ByteStream,
@@ -45,9 +49,9 @@ class BufferedByteStream(
                 self.buffers.popleft(), max_bytes, self.buffers
             )
 
-        if self.pre_receives:
+        if len(self.pre_receives) > 0:
             return _read_bytes(
-                self.pre_receives.popleft(), max_bytes, self.pre_buffers
+                self.pre_receives.popleft(), max_bytes, self.pre_receives
             )
         return _read_bytes(await self.stream.receive(), max_bytes, self.buffers)
         
@@ -86,14 +90,64 @@ class BufferedByteStream(
 
         """
         return self.stream.extra_attributes
+    
+    @overload
+    def extra(self, attribute: T_Attr) -> T_Attr: ...
 
+    @overload
+    def extra(self, attribute: T_Attr, default: T_Default) -> T_Attr | T_Default: ...
+
+    @final
+    def extra(self, attribute: Any, default: object = undefined) -> object:
+        """
+        extra(attribute, default=undefined)
+
+        Return the value of the given typed extra attribute.
+
+        :param attribute: the attribute (member of a :class:`~TypedAttributeSet`) to
+            look for
+        :param default: the value that should be returned if no value is found for the
+            attribute
+        :raises ~anyio.TypedAttributeLookupError: if the search failed and no default
+            value was given
+
+        """
+        try:
+            getter = self.extra_attributes[attribute]
+        except KeyError:
+            if default is undefined:
+                raise TypedAttributeLookupError("Attribute not found") from None
+            else:
+                return default
+
+        return getter()
+
+class ExtraMapping(Mapping):
+    def __init__(self, data: dict):
+        self._extra = data
+
+    def __getitem__(self, key: T_Attr) -> Callable[[], T_Attr]:
+        return self._extra[key]
+
+    def __setitem__(self, key: T_Attr, value: Callable[[], T_Attr]) -> None:
+        self._extra[key] = value
+
+    def __len__(self) -> int:
+        return len(self._extra)
+    
+    def __iter__(self):
+        return iter(self._extra)
+    
+    def __repr__(self) -> str:
+        return f"ExtraMapping({self._extra!r})"
+    
 
 def _read_bytes(
     buffer: bytes,
     length: int,
     buffers: deque[bytes],
 ):
-    if len(buffer) >= length:
+    if len(buffer) > length:
         buf, remianing = buffer[:length], buffer[length:]
         buffers.appendleft(remianing)
         return buf
