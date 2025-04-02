@@ -1,6 +1,7 @@
-# process start
 import time
+from typing import TypeVar
 
+T = TypeVar('T')
 
 class Runtime:
     # 单一实例，如果有则不要再创建
@@ -35,3 +36,10 @@ class Runtime:
         return Runtime._instance
 
 runtime = Runtime()
+
+
+def single_collection(*array: list[T]) -> list[T]:
+    res = []
+    for i in array:
+        res.extend(i)
+    return res
