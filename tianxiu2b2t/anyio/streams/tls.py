@@ -43,8 +43,6 @@ class TLSStream(
     def extra_attributes(self) -> Mapping[T_Attr, Callable[[], T_Attr]]:
         return self._extra
     
-    
-
 class SSLContextMapper:
     def __init__(
         self,

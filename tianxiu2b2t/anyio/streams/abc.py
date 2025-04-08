@@ -44,14 +44,13 @@ class BufferedByteStream(
         return data + separator
 
     async def receive(self, max_bytes: int = 65536) -> bytes:
-        if len(self.buffers) > 0:
-            return _read_bytes(
-                self.buffers.popleft(), max_bytes, self.buffers
-            )
-
         if len(self.pre_receives) > 0:
             return _read_bytes(
                 self.pre_receives.popleft(), max_bytes, self.pre_receives
+            )
+        if len(self.buffers) > 0:
+            return _read_bytes(
+                self.buffers.popleft(), max_bytes, self.buffers
             )
         return _read_bytes(await self.stream.receive(), max_bytes, self.buffers)
         
@@ -121,6 +120,20 @@ class BufferedByteStream(
                 return default
 
         return getter()
+    
+    @property
+    def local_addr(self) -> tuple[str, int]:
+        addr = self.extra(anyio.abc.SocketAttribute.local_address)
+        if isinstance(addr, tuple):
+            return addr[:2]
+        return addr, self.extra(anyio.abc.SocketAttribute.local_port)
+    
+    @property
+    def remote_addr(self) -> tuple[str, int]:
+        addr = self.extra(anyio.abc.SocketAttribute.remote_address)
+        if isinstance(addr, tuple):
+            return addr[:2]
+        return addr, self.extra(anyio.abc.SocketAttribute.remote_port)
 
 class ExtraMapping(Mapping):
     def __init__(self, data: dict):
