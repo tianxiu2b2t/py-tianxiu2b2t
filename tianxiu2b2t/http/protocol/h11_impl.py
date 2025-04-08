@@ -52,6 +52,12 @@ class H11Connection(
             if self.stream_connection is None:
                 continue
 
+            if isinstance(event, h11.Data):
+                self.stream_connection.read_stream.feed(event.data)
+
+            if isinstance(event, h11.EndOfMessage):
+                self.stream_connection.read_stream.eof()
+
     async def send_response(self, status_code: int, headers: Headers, stream_id: int = 0):
         buffer = self.conn.send(
             h11.Response(

@@ -1,4 +1,3 @@
-from collections import defaultdict
 import traceback
 from typing import Awaitable, Callable, MutableMapping, Any, Optional
 from urllib.parse import unquote
@@ -16,6 +15,7 @@ Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
 Receive = Callable[[], Awaitable[Message]]
 Send = Callable[[Message], Awaitable[None]]
+ASGICallable = Callable[[Scope, Receive, Send], Awaitable[None]]
 default_logging = logging.getLogger("tianxiu2b2t.http.asgi")
 
 class ASGIConfig:
@@ -29,83 +29,176 @@ class ASGIConfig:
 class ASGIApplicationBridge:
     def __init__(
         self,
-        app: Callable[[Scope, Receive, Send], Awaitable[None]],
-        config: ASGIConfig = ASGIConfig()
+        app: ASGICallable,
+        listener: anyio.abc.Listener,
+        config: ASGIConfig = ASGIConfig(),
     ):
         self.app = app
         self.config = config
+        self.listener = listener
         self.task_group = anyio.create_task_group()
-        self._entered = False
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        await self.app(scope, receive, send)
-
-    async def serve(self, listener: anyio.abc.Listener):
-        await listener.serve(self.handler)
-    
+    async def serve(
+        self,
+    ):
+        await self.task_group.__aenter__()
+        try:
+            await self.listener.serve(
+                self.handler
+            )
+        finally:
+            await self.task_group.__aexit__(None, None, None)
 
     async def handler(
         self,
-        stream: anyio.abc.AnyByteStream,
+        stream: BufferedByteStream,
     ):
-        stream = BufferedByteStream(stream)
-        if not self._entered:
-            await self.__aenter__()
-        
-        conn = Connection(
+        connection = Connection(
             stream,
             self.app,
             self.config,
+            self.task_group
         )
-        async def wrapper_handler():
-            try:
-                await conn.handle()
-            except Exception as e:
-                print(traceback.format_exc())
-
-        self.task_group.start_soon(wrapper_handler)
-
-    async def __aenter__(self):
-        await self.task_group.__aenter__()
-        self._entered = True
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.task_group.__aexit__(exc_type, exc_val, exc_tb)
-        self._entered = False
+        try:
+            await connection.handler()
+        except Exception as e:
+            default_logging.error(
+                traceback.format_exc()
+            )
         
+
 
 class Connection:
     def __init__(
         self,
         stream: BufferedByteStream,
-        app: Callable[[Scope, Receive, Send], Awaitable[None]],
-        config: ASGIConfig = ASGIConfig(),
+        app: ASGICallable,
+        config: ASGIConfig,
+        task_group: anyio.abc.TaskGroup
     ):
+        self.stream = stream
         self.app = app
         self.config = config
-        self.conn = protocol.ServerConnection(stream, self.handle_req)
-        self.scheme = "https" if isinstance(stream, (anyio.streams.tls.TLSStream, TLSStream)) else "http"
+        self.conn = protocol.ServerConnection(stream, self.handle)
+        self.scheme = "https" if isinstance(stream, (
+            TLSStream,
+            anyio.streams.tls.TLSStream
+        )) else "http"
 
-    async def handle(self):
+        self.task_group = task_group
+
+    async def handler(self):
         await self.conn.handler()
 
-    async def handle_req(self, stream: protocol.StreamConnection):
-        print(stream)
+    async def handle(
+        self,
+        request: protocol.StreamConnection,
+    ):
+        cycle = RequestResponseCycle(
+            request,
+            self.stream,
+            self.app,
+            self.config,
+            self.scheme,
+        )
+        self.task_group.start_soon(cycle.run)
 
 
-def get_local_addr(
-    stream: anyio.abc.AnyByteStream,
-):
-    addr = stream.extra(anyio.abc.SocketAttribute.local_address)
-    if isinstance(addr, tuple):
-        return addr[:2]
-    return addr, stream.extra(anyio.abc.SocketAttribute.local_port)
+class RequestResponseCycle:
+    def __init__(
+        self,
+        request: protocol.StreamConnection,
+        stream: BufferedByteStream,
+        app: ASGICallable,
+        config: ASGIConfig,
+        scheme: str,
+    ):
+        self.request = request
+        self.stream = stream
+        self.app = app
+        self.config = config
+        self.root_path = self.config.root_path
+        self.scheme = scheme
 
-def get_remote_addr(
-    stream: anyio.abc.AnyByteStream,
-):
-    addr = stream.extra(anyio.abc.SocketAttribute.remote_address)
-    if isinstance(addr, tuple):
-        return addr[:2]
-    return addr, stream.extra(anyio.abc.SocketAttribute.remote_port)
+        self.response_started = False
+        self.response_completed = False
+        self.response_wait = anyio.Event()
+
+
+        self.headers = [(key.lower(), value) for key, value in request.headers]
+        raw_path, _, query_string = request.target.partition(b"?")
+        path = unquote(raw_path.decode("ascii"))
+        full_path = self.root_path + path
+        full_raw_path = self.root_path.encode("ascii") + raw_path
+        self.scope = {
+            "type": "http",
+            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+            "http_version": request.http_version.decode("ascii"),
+            "server": self.stream.local_addr,
+            "client": self.stream.remote_addr,
+            "scheme": self.scheme,  # type: ignore[typeddict-item]
+            "method": request.method.decode("ascii"),
+            "root_path": self.root_path,
+            "path": full_path,
+            "raw_path": full_raw_path,
+            "query_string": query_string,
+            "headers": self.headers,
+            "state": {},
+        }
+
+    async def run(self):
+        try:
+            await self.app(
+                self.scope,
+                self.receive,
+                self.send
+            )
+        except Exception as e:
+            default_logging.error(
+                traceback.format_exc()
+            )
+
+    
+    async def send(self, message: Message):
+        stream_id = self.request.stream_id
+        if message["type"] == "http.response.start":
+            if self.response_started:
+                raise RuntimeError("Response already started")
+            self.response_started = True
+            self.response_wait.set()
+            self.status_code = message["status"]
+            self.headers = message["headers"]
+            await self.request.send_response(
+                self.status_code,
+                self.headers,
+                stream_id
+            )
+        elif message["type"] == "http.response.body":
+            if not self.response_started:
+                raise RuntimeError("Response not started")
+            if self.response_completed:
+                raise RuntimeError("Response already completed")
+            more_data = message.get("more_body", False)
+            if not more_data:
+                self.response_completed = True
+                self.response_wait.set()
+            await self.request.send_data(message["body"], more_data, stream_id)
+
+    async def receive(self) -> Message:
+        read_stream = self.request.read_stream
+        
+        if read_stream.aborted:
+            return {
+                "type": "http.disconnect",
+            }
+        
+        if read_stream.size == 0 and read_stream.is_eof and not self.response_completed:
+            await self.response_wait.wait()
+
+        data = await read_stream.receive()
+
+        return {
+            "type": "http.request",
+            "body": data,
+            "more_body": True
+        }
