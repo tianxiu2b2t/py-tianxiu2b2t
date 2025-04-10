@@ -1,15 +1,17 @@
 import abc
+from collections import deque
 from dataclasses import dataclass
 import io
 import logging
 import ssl
 import traceback
-from typing import Any, Awaitable, Callable, MutableMapping, TypedDict, cast
+from typing import Any, Awaitable, Callable, MutableMapping, Optional, TypedDict, cast
 from urllib.parse import unquote
 
 import anyio
 import anyio.abc
 
+from ..anyio.queues import Queue
 from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
 from tianxiu2b2t.http.protocol import auto
 from tianxiu2b2t.http.protocol.streams import HTTPStream, WebSocketReadStream, WebSocketStream
@@ -189,6 +191,10 @@ class WebSocketRequestResponseCycle(RequestResponseCycle):
             "headers": self.connection.headers,
             "state": {},
         }
+        self.message_queues: deque[Message] = deque()
+        self.message_queues.appendleft({
+            "type": "websocket.connect"
+        })
 
     async def process(self):
         app = self.config.app
@@ -200,18 +206,36 @@ class WebSocketRequestResponseCycle(RequestResponseCycle):
 
     async def send(self, message: Message):
         type = message["type"]
-        print(type)
+        if type == "websocket.accept":
+            await self.connection.accept(message["subprotocol"])
+        elif type == "websocket.send":
+            await self.connection.send_data(message["text"] if message["text"] is not None else message["bytes"])
+        elif type == "websocket.close":
+            await self.connection.close(message["code"], message["reason"])
+            await self.connection.reader.aclose()
+            self.completed = True
+            self.disconnect = True
+            
 
     async def receive(self) -> Message:
-        data = await self.connection.reader.receive()
+        if self.message_queues:
+            return self.message_queues.popleft()
+        
+        data = await self.receive_data()
         if data is None:
             return {
                 "type": "websocket.disconnect"
             }
+        return data
+
+    async def receive_data(self) -> Optional[Message]:
+        data = await self.connection.reader.receive()
+        if data is None:
+            return None
         return {
             "type": "websocket.receive",
-            "text": data if isinstance(data, io.StringIO) else None,
-            "bytes": data if isinstance(data, io.BytesIO) else None
+            "text": data.read() if isinstance(data, io.StringIO) else None,
+            "bytes": data.read() if isinstance(data, io.BytesIO) else None
         }
     
 
