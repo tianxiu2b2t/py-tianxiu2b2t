@@ -1,204 +1,271 @@
+import abc
+from dataclasses import dataclass
+import io
+import logging
+import ssl
 import traceback
-from typing import Awaitable, Callable, MutableMapping, Any, Optional
+from typing import Any, Awaitable, Callable, MutableMapping, TypedDict, cast
 from urllib.parse import unquote
 
+import anyio
 import anyio.abc
-import anyio.streams
-import anyio.streams.tls
-import logging
 
-from . import protocol
+from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
+from tianxiu2b2t.http.protocol import auto
+from tianxiu2b2t.http.protocol.streams import HTTPStream, WebSocketReadStream, WebSocketStream
 
-from ..anyio.streams import BufferedByteStream, TLSStream
+from .protocol.types import Header, Stream
 
-Scope = MutableMapping[str, Any]
+logger = logging.getLogger("tianxiu2b2t.http.asgi")
+
 Message = MutableMapping[str, Any]
-Receive = Callable[[], Awaitable[Message]]
 Send = Callable[[Message], Awaitable[None]]
+Receive = Callable[[], Awaitable[Message]]
+Scope = MutableMapping[str, Any]
+ASGIVersion = {
+    "version": "3.0",
+    "spec_version": "2.3",
+}
 ASGICallable = Callable[[Scope, Receive, Send], Awaitable[None]]
-default_logging = logging.getLogger("tianxiu2b2t.http.asgi")
 
+class HTTPScope(TypedDict):
+    type: str
+    http_version: str
+    method: str
+    scheme: str
+    path: str
+    raw_path: bytes
+    query_string: bytes
+    root_path: str
+    headers: list[tuple[str, str]]
+    client: tuple[str, int]
+    server: tuple[str, int]
+
+class WebSocketScope(TypedDict):
+    type: str
+    subprotocols: list[str]
+    extensions: dict[str, Any]
+    client: tuple[str, int]
+    server: tuple[str, int]
+
+@dataclass
 class ASGIConfig:
+    app: ASGICallable
+    root_path: str = ""
+
+class RequestResponseCycle(
+    metaclass=abc.ABCMeta
+):
     def __init__(
         self,
-        root_path: str = "",
+        connection: Stream,
+        config: ASGIConfig
     ):
-        self.root_path = root_path
-        self.asgi_version = "3.0"
+        self.connection = connection
+        self.config = config
+
+    @abc.abstractmethod
+    async def process(self):
+        pass
+
+class HTTPRequestResponseCycle(RequestResponseCycle):
+    def __init__(
+        self,
+        connection: HTTPStream,
+        config: ASGIConfig
+    ):
+        super().__init__(connection, config)
+        # type
+        self.connection: HTTPStream
+        """
+                        self.headers = [(key.lower(), value) for key, value in event.headers]
+                raw_path, _, query_string = event.target.partition(b"?")
+                path = unquote(raw_path.decode("ascii"))
+                full_path = self.root_path + path
+                full_raw_path = self.root_path.encode("ascii") + raw_path
+                self.scope = {
+                    "type": "http",
+                    "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
+                    "http_version": event.http_version.decode("ascii"),
+                    "server": self.server,
+                    "client": self.client,
+                    "scheme": self.scheme,  # type: ignore[typeddict-item]
+                    "method": event.method.decode("ascii"),
+                    "root_path": self.root_path,
+                    "path": full_path,
+                    "raw_path": full_raw_path,
+                    "query_string": query_string,
+                    "headers": self.headers,
+                    "state": self.app_state.copy(),
+                }
+        """
+
+        raw_path, _, query_string = self.connection.target.partition(b"?")
+        path = unquote(raw_path.decode("ascii"))
+        full_path = self.config.root_path + path
+        full_raw_path = self.config.root_path.encode("ascii") + raw_path
+        self.scope = {
+            "type": "http",
+            "asgi": ASGIVersion,
+            "http_version": self.connection.http_version.decode("ascii"),
+            "server": self.connection.server,
+            "client": self.connection.client,
+            "scheme": self.connection.scheme,  # type: ignore[typeddict-item]
+            "method": self.connection.method.decode("ascii"),
+            "root_path": self.config.root_path,
+            "path": full_path,
+            "raw_path": full_raw_path,
+            "query_string": query_string,
+            "headers": self.connection.headers,
+            "state": {},
+        }
+        self.disconnect = False
+        self.completed = False
+        self.receive_message = anyio.Event()
+
+    async def process(self):
+        app = self.config.app
+        try:
+            await app(self.scope, self.receive, self.send)
+        except:
+            logger.exception("Error in ASGI application")
+            logger.exception(traceback.format_exc())
+
+    async def send(self, message: Message):
+        type = message["type"]
+        if type == "http.response.start":
+            await self.connection.send_response(message["status"], message["headers"])
+        elif type == "http.response.body":
+            await self.connection.send_data(message["body"])
+            if not message.get("more_body", False):
+                await self.connection.send_data(b'')
+                self.completed = True
+                self.disconnect = True
+                self.receive_message.set()
+
+
+    async def receive(self) -> Message:
+        if self.connection.reader.is_eof() and self.connection.reader.size() == 0:
+            await self.receive_message.wait()
+            
+        if self.disconnect and self.completed:
+            return {
+                "type": "http.disconnect"
+            }
+        
+        data = await self.connection.reader.receive()
+        more_body = not self.connection.reader.is_eof() and self.connection.reader.size() > 0
+        
+        return {
+            "type": "http.request",
+            "body": await self.connection.reader.receive(),
+            "more_body": more_body
+        }
+
+class WebSocketRequestResponseCycle(RequestResponseCycle):
+    def __init__(
+        self,
+        connection: WebSocketStream,
+        config: ASGIConfig
+    ):
+        super().__init__(connection, config)
+        self.connection: WebSocketStream
+
+        raw_path, _, query_string = self.connection.target.partition(b"?")
+        path = unquote(raw_path.decode("ascii"))
+        full_path = self.config.root_path + path
+        full_raw_path = self.config.root_path.encode("ascii") + raw_path
+        self.scope = {
+            "type": "websocket",
+            "asgi": ASGIVersion,
+            "http_version": self.connection.http_version.decode("ascii"),
+            "server": self.connection.server,
+            "client": self.connection.client,
+            "scheme": self.connection.scheme,  # type: ignore[typeddict-item]
+            "root_path": self.config.root_path,
+            "path": full_path,
+            "raw_path": full_raw_path,
+            "query_string": query_string,
+            "headers": self.connection.headers,
+            "state": {},
+        }
+
+    async def process(self):
+        app = self.config.app
+        try:
+            await app(self.scope, self.receive, self.send)
+        except:
+            logger.exception("Error in ASGI application")
+            logger.exception(traceback.format_exc())
+
+    async def send(self, message: Message):
+        type = message["type"]
+        print(type)
+
+    async def receive(self) -> Message:
+        data = await self.connection.reader.receive()
+        if data is None:
+            return {
+                "type": "websocket.disconnect"
+            }
+        return {
+            "type": "websocket.receive",
+            "text": data if isinstance(data, io.StringIO) else None,
+            "bytes": data if isinstance(data, io.BytesIO) else None
+        }
+    
 
 class ASGIApplicationBridge:
     def __init__(
         self,
-        app: ASGICallable,
-        listener: anyio.abc.Listener,
-        config: ASGIConfig = ASGIConfig(),
+        config: ASGIConfig
     ):
-        self.app = app
+        self.app = config.app
         self.config = config
-        self.listener = listener
         self.task_group = anyio.create_task_group()
-
-    async def serve(
-        self,
-    ):
-        await self.task_group.__aenter__()
-        try:
-            await self.listener.serve(
-                self.handler
-            )
-        finally:
-            await self.task_group.__aexit__(None, None, None)
 
     async def handler(
         self,
-        stream: BufferedByteStream,
+        connection: Stream
     ):
-        connection = Connection(
-            stream,
-            self.app,
-            self.config,
-            self.task_group
-        )
+        conn = None
+        if isinstance(connection, HTTPStream):
+            conn = HTTPRequestResponseCycle(connection, self.config)
+        elif isinstance(connection, WebSocketStream):
+            conn = WebSocketRequestResponseCycle(connection, self.config)
+        if conn is None:
+            return
         try:
-            await connection.handler()
-        except Exception as e:
-            default_logging.error(
-                traceback.format_exc()
-            )
+            await conn.process()
+        except (
+            anyio.EndOfStream,
+            anyio.ClosedResourceError,
+            anyio.BrokenResourceError,
+            anyio.BusyResourceError,
+            ssl.SSLError,
+            ssl.SSLEOFError
+        ):
+            pass
+
+
+    async def __aenter__(self):
+        await self.task_group.__aenter__()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.task_group.__aexit__(exc_type, exc_val, exc_tb)
+
+    async def serve(
+        self,
+        listener: anyio.abc.Listener
+    ):
+        async def wrapper_handler(
+            stream: anyio.abc.AnyByteStream
+        ):
+            conn = await auto.auto(BufferedByteStream(stream), self.handler)
+            await conn.process()
         
-
-
-class Connection:
-    def __init__(
-        self,
-        stream: BufferedByteStream,
-        app: ASGICallable,
-        config: ASGIConfig,
-        task_group: anyio.abc.TaskGroup
-    ):
-        self.stream = stream
-        self.app = app
-        self.config = config
-        self.conn = protocol.ServerConnection(stream, self.handle)
-        self.scheme = "https" if isinstance(stream, (
-            TLSStream,
-            anyio.streams.tls.TLSStream
-        )) else "http"
-
-        self.task_group = task_group
-
-    async def handler(self):
-        await self.conn.handler()
-
-    async def handle(
-        self,
-        request: protocol.StreamConnection,
-    ):
-        cycle = RequestResponseCycle(
-            request,
-            self.stream,
-            self.app,
-            self.config,
-            self.scheme,
-        )
-        self.task_group.start_soon(cycle.run)
-
-
-class RequestResponseCycle:
-    def __init__(
-        self,
-        request: protocol.StreamConnection,
-        stream: BufferedByteStream,
-        app: ASGICallable,
-        config: ASGIConfig,
-        scheme: str,
-    ):
-        self.request = request
-        self.stream = stream
-        self.app = app
-        self.config = config
-        self.root_path = self.config.root_path
-        self.scheme = scheme
-
-        self.response_started = False
-        self.response_completed = False
-        self.response_wait = anyio.Event()
-
-
-        self.headers = [(key.lower(), value) for key, value in request.headers]
-        raw_path, _, query_string = request.target.partition(b"?")
-        path = unquote(raw_path.decode("ascii"))
-        full_path = self.root_path + path
-        full_raw_path = self.root_path.encode("ascii") + raw_path
-        self.scope = {
-            "type": "http",
-            "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
-            "http_version": request.http_version.decode("ascii"),
-            "server": self.stream.local_addr,
-            "client": self.stream.remote_addr,
-            "scheme": self.scheme,  # type: ignore[typeddict-item]
-            "method": request.method.decode("ascii"),
-            "root_path": self.root_path,
-            "path": full_path,
-            "raw_path": full_raw_path,
-            "query_string": query_string,
-            "headers": self.headers,
-            "state": {},
-        }
-
-    async def run(self):
-        try:
-            await self.app(
-                self.scope,
-                self.receive,
-                self.send
-            )
-        except Exception as e:
-            default_logging.error(
-                traceback.format_exc()
-            )
+        await listener.serve(wrapper_handler, self.task_group)
 
     
-    async def send(self, message: Message):
-        stream_id = self.request.stream_id
-        if message["type"] == "http.response.start":
-            if self.response_started:
-                raise RuntimeError("Response already started")
-            self.response_started = True
-            self.response_wait.set()
-            self.status_code = message["status"]
-            self.headers = message["headers"]
-            await self.request.send_response(
-                self.status_code,
-                self.headers,
-                stream_id
-            )
-        elif message["type"] == "http.response.body":
-            if not self.response_started:
-                raise RuntimeError("Response not started")
-            if self.response_completed:
-                raise RuntimeError("Response already completed")
-            more_data = message.get("more_body", False)
-            if not more_data:
-                self.response_completed = True
-                self.response_wait.set()
-            await self.request.send_data(message["body"], more_data, stream_id)
 
-    async def receive(self) -> Message:
-        read_stream = self.request.read_stream
-        
-        if read_stream.aborted:
-            return {
-                "type": "http.disconnect",
-            }
-        
-        if read_stream.size == 0 and read_stream.is_eof and not self.response_completed:
-            await self.response_wait.wait()
-
-        data = await read_stream.receive()
-
-        return {
-            "type": "http.request",
-            "body": data,
-            "more_body": True
-        }

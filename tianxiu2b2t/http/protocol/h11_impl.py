@@ -1,4 +1,7 @@
+import base64
+import hashlib
 from typing import Any, Callable
+import anyio
 import h11
 
 from ...anyio.streams.abc import BufferedByteStream
@@ -15,6 +18,7 @@ class H11Connection(
         super().__init__(stream, handle)
         self.conn = h11.Connection(h11.SERVER)
         self.stream_connection: StreamConnection = None # type: ignore
+        self.waiting_for_upgrade = anyio.Event()
 
     async def initialize(self):
         await super().initialize()
@@ -48,7 +52,11 @@ class H11Connection(
                     self.send_response,
                     self.send_data
                 )
+
+                await self.should_upgrade()
+
                 self.task_group.start_soon(self.handle, self.stream_connection)
+            print(event)
             if self.stream_connection is None:
                 continue
 
@@ -102,4 +110,39 @@ class H11Connection(
             self.conn.start_next_cycle()
         return True
 
+    async def aclose(self):
+        self.conn.send_failed()
     
+    async def should_upgrade(self):
+        connection = _find_header(self.stream_connection.headers, b'connection')
+        upgrade = _find_header(self.stream_connection.headers, b'upgrade')
+        websocket_key = _find_header(self.stream_connection.headers, b'sec-websocket-key')
+        if connection.lower() != b'upgrade' or upgrade != b'websocket' or websocket_key == b'':
+            return
+        
+        accept_key = hashlib.sha1(websocket_key).digest()
+        accept_key = base64.b64encode(accept_key)
+
+        buffer = self.conn.send(
+            h11.InformationalResponse(
+                status_code=101,
+                headers=[
+                    (b'Upgrade', b'websocket'),
+                    (b'Connection', b'Upgrade'),
+                    (b'Sec-WebSocket-Accept', accept_key),
+                    (b'Sec-WebSocket-Version', b'13')
+                ]
+            )
+        )
+        if buffer is None:
+            return
+        await self.stream.send(buffer)
+
+        await self.waiting_for_upgrade.wait()
+        
+
+def _find_header(headers: Headers, key: bytes) -> bytes:
+    for k, v in headers:
+        if k == key:
+            return v
+    return b''

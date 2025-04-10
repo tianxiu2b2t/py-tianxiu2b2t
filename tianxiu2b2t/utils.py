@@ -43,3 +43,27 @@ def single_collection(*array: list[T]) -> list[T]:
     for i in array:
         res.extend(i)
     return res
+
+def varint_bytes(
+    datum: int,
+):
+    # avro int
+    datum = (datum << 1) ^ (datum >> 63)
+    res = b''
+    while (datum & ~0x7F) != 0:
+        res += ((datum & 0x7F) | 0x80).to_bytes(1, 'big')
+        datum >>= 7
+    res += datum.to_bytes(1, 'big')
+    return res
+
+def varint_from_bytes(data: bytes) -> int:
+    i = 0
+    b = data[0]
+    n = b & 0x7F
+    shift = 7
+    while (b & 0x80) != 0:
+        b = data[i := i + 1]
+        n |= (b & 0x7F) << shift
+        shift += 7
+    datum = (n >> 1) ^ -(n & 1)
+    return datum
