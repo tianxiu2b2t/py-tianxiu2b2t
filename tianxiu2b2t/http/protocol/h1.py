@@ -1,11 +1,14 @@
 import base64
 from dataclasses import dataclass
 import hashlib
+import traceback
 from typing import Optional
  
 import anyio
 import anyio.abc
 import h11
+
+from tianxiu2b2t.anyio.lock import WaitLock
 
 from .websockets import WebSocketConnection
 from .streams import ZERO_STREAM_ID, ByteReadStream, HTTPStream
@@ -26,6 +29,7 @@ class H1Connection(
         self.conn = h11.Connection(
             our_role=h11.SERVER,
         )
+        self.pause = WaitLock()
 
     async def process(
         self
@@ -39,13 +43,17 @@ class H1Connection(
     ):
         while True:
             try:
+                await self.pause.wait()
                 data = await self.stream.receive()
                 self.conn.receive_data(data)
             except:
                 break
 
             while True:
-                event = self.conn.next_event()
+                try:
+                    event = self.conn.next_event()
+                except h11.RemoteProtocolError:
+                    break
                 if isinstance(event, (
                     h11.ConnectionClosed,
                     h11.RemoteProtocolError,
@@ -86,9 +94,12 @@ class H1Connection(
 
                     task_group.start_soon(self.handler, self.request)
                 
+                if not hasattr(self, 'request'):
+                    continue
 
                 if isinstance(event, h11.EndOfMessage):
                     self.request.reader.feed_eof()
+                    self.pause.acquire()
 
                 if isinstance(event, h11.Data):
                     await self.request.reader.feed(event.data)
@@ -165,10 +176,12 @@ class H1Connection(
             )
             await self.stream.aclose()
             return
-        
+
         if (
             self.conn.our_state == h11.DONE
             and self.conn.their_state == h11.DONE
         ):
-            self.conn.start_next_cycle()
-            return
+            await self.stream.aclose()
+            self.pause.release()
+
+    

@@ -79,28 +79,6 @@ class HTTPRequestResponseCycle(RequestResponseCycle):
         super().__init__(connection, config)
         # type
         self.connection: HTTPStream
-        """
-                        self.headers = [(key.lower(), value) for key, value in event.headers]
-                raw_path, _, query_string = event.target.partition(b"?")
-                path = unquote(raw_path.decode("ascii"))
-                full_path = self.root_path + path
-                full_raw_path = self.root_path.encode("ascii") + raw_path
-                self.scope = {
-                    "type": "http",
-                    "asgi": {"version": self.config.asgi_version, "spec_version": "2.3"},
-                    "http_version": event.http_version.decode("ascii"),
-                    "server": self.server,
-                    "client": self.client,
-                    "scheme": self.scheme,  # type: ignore[typeddict-item]
-                    "method": event.method.decode("ascii"),
-                    "root_path": self.root_path,
-                    "path": full_path,
-                    "raw_path": full_raw_path,
-                    "query_string": query_string,
-                    "headers": self.headers,
-                    "state": self.app_state.copy(),
-                }
-        """
 
         raw_path, _, query_string = self.connection.target.partition(b"?")
         path = unquote(raw_path.decode("ascii"))
@@ -112,7 +90,7 @@ class HTTPRequestResponseCycle(RequestResponseCycle):
             "http_version": self.connection.http_version.decode("ascii"),
             "server": self.connection.server,
             "client": self.connection.client,
-            "scheme": self.connection.scheme,  # type: ignore[typeddict-item]
+            "scheme": self.connection.scheme.decode("ascii"),  # type: ignore[typeddict-item]
             "method": self.connection.method.decode("ascii"),
             "root_path": self.config.root_path,
             "path": full_path,
