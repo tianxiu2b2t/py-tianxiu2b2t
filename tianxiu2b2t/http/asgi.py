@@ -265,6 +265,8 @@ class ASGIApplicationBridge:
             stream: anyio.abc.AnyByteStream
         ):
             conn = await auto.auto(BufferedByteStream(stream), self.handler)
+            if conn is None:
+                return
             await conn.process()
         
         await listener.serve(wrapper_handler, self.task_group)
