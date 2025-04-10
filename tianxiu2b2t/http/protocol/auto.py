@@ -10,8 +10,11 @@ async def auto(
     tls: bool = False
 ):
     # http2
-    buffer = await stream.pre_readexactly(24)
-    if buffer == b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n':
-        return H2Connection(stream, handler, tls)
-    else:
-        return H1Connection(stream, handler, tls)
+    try:
+        buffer = await stream.pre_readexactly(24)
+        if buffer == b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n':
+            return H2Connection(stream, handler, tls)
+        else:
+            return H1Connection(stream, handler, tls)
+    except Exception:
+        ...
