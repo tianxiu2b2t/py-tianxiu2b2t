@@ -8,14 +8,16 @@ import anyio
 import anyio.abc
 import h11
 
-from tianxiu2b2t.anyio.lock import WaitLock
+from ...anyio.lock import WaitLock
+from .exceptions import HTTPHeaderSentException
 
 from .websockets import WebSocketConnection
 from .streams import ZERO_STREAM_ID, ByteReadStream, HTTPStream
 from .types import Header, Connection, Handler
 from ...anyio.streams import BufferedByteStream
-
-
+from ...logging import logging
+from ...anyio import exceptions
+    
 class H1Connection(
     Connection
 ):
@@ -23,13 +25,26 @@ class H1Connection(
         self,
         stream: BufferedByteStream,
         handler: Handler,
-        tls: bool
+        tls: bool = False
     ):
-        super().__init__(stream, handler, tls)
+        super().__init__(
+            stream=stream,
+            handler=handler,
+            tls=tls
+        )
         self.conn = h11.Connection(
             our_role=h11.SERVER,
         )
         self.pause = WaitLock()
+
+    async def wrapper_handler(
+        self,
+        request: HTTPStream
+    ):
+        try:
+            await self.handler(request)
+        except:
+            logging.exception(traceback.format_exc())
 
     async def process(
         self
@@ -41,68 +56,94 @@ class H1Connection(
         self,
         task_group: anyio.abc.TaskGroup
     ):
-        while True:
-            try:
-                await self.pause.wait()
-                data = await self.stream.receive()
-                self.conn.receive_data(data)
-            except:
-                break
+        async for event in self.next_event():
+            if isinstance(event, h11.Request):
+                headers = Header(event.headers)
+                self.request = HTTPStream(
+                    stream_id=ZERO_STREAM_ID,
+                    method=event.method,
+                    target=event.target,
+                    headers=headers,
+                    scheme=b"https" if self.tls else b"http",
+                    tls=self.tls,
+                    http_version=event.http_version,
+                    client=self.stream.remote_addr,
+                    server=self.stream.local_addr,
+                    reader=ByteReadStream(),
+                    raw_send_response=self.send_response,
+                    raw_send_data=self.send_data
+                )
+                self.request.init()
 
-            while True:
-                try:
-                    event = self.conn.next_event()
-                except h11.RemoteProtocolError:
+                if self.is_websocket():
                     break
-                if isinstance(event, (
-                    h11.ConnectionClosed,
-                    h11.RemoteProtocolError,
-                    h11.LocalProtocolError,
-                    h11.NEED_DATA,
-                    h11.PAUSED
-                )):
-                    break
-                
+
+                await self.wrapper_handler(self.request)
+
+
+            if isinstance(event, h11.Data):
+                await self.request.reader.feed(event.data)
+
+            if isinstance(event, h11.EndOfMessage):
+                self.request.reader.feed_eof()
+
+        if hasattr(self, 'request') and self.request is not None and self.is_websocket():
+            conn = WebSocketConnection(
+                stream=self.stream,
+                handler=self.handler,
+                tls=self.tls,
+                request=self.request,
+                accept=self.accept_ws
+            )
+            await conn.receive_data(task_group)
+
+    async def send_data(
+        self,
+        data: bytes,
+        stream_id: int = ZERO_STREAM_ID
+    ):
+        if not data:
+            if self.request.response_completed:
+                return
             
-                if isinstance(event, h11.Request):
-                    headers = Header(event.headers)
-                    self.request = HTTPStream(
-                        stream_id=ZERO_STREAM_ID,
-                        method=event.method,
-                        target=event.target,
-                        headers=headers,
-                        scheme=b"https" if self.tls else b"http",
-                        tls=self.tls,
-                        http_version=event.http_version,
-                        client=self.stream.local_addr,
-                        server=self.stream.remote_addr,
-                        reader=ByteReadStream(),
-                        raw_send_response=self.send_response,
-                        raw_send_data=self.send_data
-                    )
-                    self.request.init()
-                    if self.is_websocket():
-                        conn = WebSocketConnection(
-                            stream=self.stream,
-                            handler=self.handler,
-                            tls=self.tls,
-                            request=self.request,
-                            accept=self.accept_ws
-                        )
-                        await conn.receive_data(task_group)
-                        return
+            self.request.response_completed = True
+            
+            await self.raw_send(
+                h11.EndOfMessage()
+            )
 
-                    task_group.start_soon(self.handler, self.request)
-                
-                if not hasattr(self, 'request'):
-                    continue
+            await self.maybe_next_cycle()
+            return
+        await self.raw_send(
+            h11.Data(data=data)
+        )
 
-                if isinstance(event, h11.EndOfMessage):
-                    self.request.reader.feed_eof()
-                    self.pause.acquire()
+    async def send_response(
+        self,
+        status_code: int,
+        headers: Header,
+        stream_id: int = ZERO_STREAM_ID
+    ):
+        if self.request.sent_headers:
+            raise HTTPHeaderSentException('Headers already sent')
+        
+        self.request.sent_headers = True
+        await self.raw_send(
+            h11.Response(
+                status_code=status_code,
+                headers=headers
+            )
+        )
 
-                if isinstance(event, h11.Data):
-                    await self.request.reader.feed(event.data)
+    async def raw_send(
+        self,
+        event: h11.Event
+    ):
+        data = self.conn.send(event)
+
+        if data is None:
+            return
+        await self.stream.send(data)
 
     def is_websocket(self):
         assert self.request is not None, 'No request'
@@ -129,45 +170,33 @@ class H1Connection(
         )
         
 
-    async def raw_send(
-        self,
-        event: h11.Event
-    ):
-        data = self.conn.send(event)
-        
-        if data is None:
-            return
-        await self.stream.send(data)
-                
+    async def next_event(self):
+        while True:
+            try:
+                event = self.conn.next_event()
+            except h11.LocalProtocolError:
+                await self.raw_send(
+                    h11.ConnectionClosed()
+                )
+                await self.stream.aclose()
+                return
+            if isinstance(event, h11.PAUSED):
+                self.conn.start_next_cycle()
+            if isinstance(event, h11.NEED_DATA):
+                try:
+                    self.conn.receive_data(await self.stream.receive())
+                except exceptions.ALLStreamError:
+                    return
+                continue
 
-    async def send_response(
-        self,
-        status_code: int,
-        headers: Header,
-        stream_id: int = ZERO_STREAM_ID
-    ):
-        await self.raw_send(
-            h11.Response(
-                status_code=status_code,
-                headers=headers
-            )
-        )
+            if isinstance(event, h11.ConnectionClosed):
+                await self.stream.aclose()
+                return
+            
+            if isinstance(event, h11.EndOfMessage):
+                self.request.reader.feed_eof()
 
-    async def send_data(
-        self,
-        data: bytes,
-        stream_id: int = ZERO_STREAM_ID
-    ):
-        if not data:
-            await self.raw_send(
-                h11.EndOfMessage()
-            )
-            await self.maybe_next_cycle()
-            return
-        await self.raw_send(
-            h11.Data(data=data)
-        )
-
+            yield event
 
     async def maybe_next_cycle(self):
         if self.conn.our_state == h11.MUST_CLOSE or self.conn.their_state == h11.MUST_CLOSE:
@@ -181,7 +210,5 @@ class H1Connection(
             self.conn.our_state == h11.DONE
             and self.conn.their_state == h11.DONE
         ):
-            await self.stream.aclose()
+            self.conn.start_next_cycle()
             self.pause.release()
-
-    

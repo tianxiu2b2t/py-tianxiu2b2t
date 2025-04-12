@@ -134,8 +134,8 @@ class H2Connection(
                         scheme=scheme,
                         tls=self.tls,
                         http_version=b'2.0',
-                        client=self.stream.local_addr,
-                        server=self.stream.remote_addr,
+                        client=self.stream.remote_addr,
+                        server=self.stream.local_addr,
                         raw_send_data=self.send_data,
                         raw_send_response=self.send_response
                     )

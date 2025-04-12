@@ -5,18 +5,19 @@ import io
 import logging
 import ssl
 import traceback
-from typing import Any, Awaitable, Callable, MutableMapping, Optional, TypedDict, cast
+from typing import Any, Awaitable, Callable, MutableMapping, Optional, TypedDict
 from urllib.parse import unquote
 
 import anyio
 import anyio.abc
 
-from ..anyio.queues import Queue
-from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
-from tianxiu2b2t.http.protocol import auto
-from tianxiu2b2t.http.protocol.streams import HTTPStream, WebSocketReadStream, WebSocketStream
+from ..anyio.streams.abc import BufferedByteStream
+from ..anyio.exceptions import ALLStreamError
+from .protocol import auto, exceptions
+from .protocol.streams import HTTPStream, WebSocketStream
 
-from .protocol.types import Header, Stream
+from .protocol.types import Stream
+
 
 logger = logging.getLogger("tianxiu2b2t.http.asgi")
 
@@ -107,6 +108,10 @@ class HTTPRequestResponseCycle(RequestResponseCycle):
         app = self.config.app
         try:
             await app(self.scope, self.receive, self.send)
+        except ALLStreamError:
+            self.disconnect = True
+            self.receive_message.set()
+            return
         except:
             logger.exception("Error in ASGI application")
             logger.exception(traceback.format_exc())
@@ -128,7 +133,7 @@ class HTTPRequestResponseCycle(RequestResponseCycle):
         if self.connection.reader.is_eof() and self.connection.reader.size() == 0:
             await self.receive_message.wait()
             
-        if self.disconnect and self.completed:
+        if self.disconnect or self.completed:
             return {
                 "type": "http.disconnect"
             }
@@ -161,7 +166,7 @@ class WebSocketRequestResponseCycle(RequestResponseCycle):
             "http_version": self.connection.http_version.decode("ascii"),
             "server": self.connection.server,
             "client": self.connection.client,
-            "scheme": self.connection.scheme,  # type: ignore[typeddict-item]
+            "scheme": "wss" if self.connection.tls else "ws",  # type: ignore[typeddict-item]
             "root_path": self.config.root_path,
             "path": full_path,
             "raw_path": full_raw_path,
@@ -178,6 +183,8 @@ class WebSocketRequestResponseCycle(RequestResponseCycle):
         app = self.config.app
         try:
             await app(self.scope, self.receive, self.send)
+        except ALLStreamError:
+            return
         except:
             logger.exception("Error in ASGI application")
             logger.exception(traceback.format_exc())
@@ -215,7 +222,6 @@ class WebSocketRequestResponseCycle(RequestResponseCycle):
             "text": data.read() if isinstance(data, io.StringIO) else None,
             "bytes": data.read() if isinstance(data, io.BytesIO) else None
         }
-    
 
 class ASGIApplicationBridge:
     def __init__(
@@ -239,14 +245,7 @@ class ASGIApplicationBridge:
             return
         try:
             await conn.process()
-        except (
-            anyio.EndOfStream,
-            anyio.ClosedResourceError,
-            anyio.BrokenResourceError,
-            anyio.BusyResourceError,
-            ssl.SSLError,
-            ssl.SSLEOFError
-        ):
+        except ALLStreamError:
             pass
 
 
@@ -272,4 +271,18 @@ class ASGIApplicationBridge:
         await listener.serve(wrapper_handler, self.task_group)
 
     
-
+class ASGIListener:
+    def __init__(
+        self,
+        config: ASGIConfig,
+        listener: anyio.abc.Listener
+    ):
+        self.config = config
+        self.bridge = ASGIApplicationBridge(config)
+        self.listener = listener
+    
+    async def serve(
+        self,
+    ):
+        async with self.bridge:
+            await self.bridge.serve(self.listener)

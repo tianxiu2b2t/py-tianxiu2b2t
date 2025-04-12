@@ -16,6 +16,11 @@ class HTTPStream(Stream):
     send_data: SendDataWithoutStreamId = field(default=_empty)
     send_response: SendResponseWithoutStreamId = field(default=_empty)
 
+    sent_headers: bool = False
+    response_completed: bool = False
+    disconnected: bool = False
+    abort: bool = False
+
     def init(self) -> None:
         async def wrapper_send_data(data: bytes):
             await self.raw_send_data(data, self.stream_id)
