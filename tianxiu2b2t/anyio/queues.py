@@ -54,3 +54,41 @@ class Queue(Generic[T]):
         if self._putter_waiters:
             self._putter_waiters.popleft().set()
         return item
+
+    def empty(self) -> bool:
+        """
+        Check if the queue is empty.
+        """
+        return not bool(self._queue)
+    
+    def full(self) -> bool:
+        """
+        Check if the queue is full.
+        """
+        return self._maxsize != 0 and len(self._queue) >= self._maxsize
+    
+    def qsize(self) -> int:
+        """
+        Return the number of items in the queue.
+        """
+        return len(self._queue)
+    
+    def maxsize(self) -> int:
+        """
+        Return the maximum size of the queue.
+        """
+        return self._maxsize
+    
+    def clear(self) -> None:
+        """
+        Clear the queue.
+        """
+        self._queue.clear()
+        self._putter_waiters.clear()
+        self._getter_waiters.clear()
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the queue.
+        """
+        return f"Queue(maxsize={self._maxsize}, qsize={self.qsize()})"
