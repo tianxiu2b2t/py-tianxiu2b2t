@@ -8,7 +8,7 @@ from typing import Any, Callable, Mapping, Optional, TypeVar
 import anyio.abc
 import anyio.streams.tls
 
-from .abc import BufferedByteStream, T_Attr, ExtraMapping
+from .abc import BufferedByteStream, ExtraListener, T_Attr, ExtraMapping
 
 @dataclass(eq=False)
 class TLSExtraData:
@@ -73,7 +73,7 @@ class SSLContextMapper:
         return self.default_context or list(self.contexts.values())[0]
     
 class AutoTLSListener(
-    anyio.abc.Listener
+    ExtraListener
 ):
     def __init__(
         self,
@@ -82,6 +82,7 @@ class AutoTLSListener(
         standard_compatible: bool = True,
         handshake_timeout: float = 30
     ):
+        super().__init__(listener)
         self.listener = listener
         self.standard_compatible = standard_compatible
         self.handshake_timeout = handshake_timeout

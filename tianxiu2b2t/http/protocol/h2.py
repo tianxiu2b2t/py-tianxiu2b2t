@@ -9,6 +9,7 @@ import h2.settings
 
 from .streams import ByteReadStream, HTTPStream
 from .types import Header, Connection, Handler
+from .exceptions import HTTPHeaderSentException
 from ...anyio.streams import BufferedByteStream
 
 DEFAULT_SETTINGS = {
@@ -215,14 +216,16 @@ class H2Connection(
     ):
         if stream_id not in self.streams or self.streams[stream_id].writer.is_eof() or self.streams[stream_id].reset:
             return
+        stream = self.streams[stream_id]
+        if stream.sent_headers:
+            raise HTTPHeaderSentException()
         headers = Header([
             (b':status', str(status_code).encode('ascii')),
         ] + headers)
-        try:
-            self.conn.send_headers(stream_id, headers)
-            await self.flush()
-        except:
-            print('send response error')
+        
+        stream.sent_headers = True
+        self.conn.send_headers(stream_id, headers)
+        await self.flush()
 
 
     

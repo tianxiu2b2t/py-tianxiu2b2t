@@ -5,7 +5,7 @@ import traceback
 from typing import Any, Callable, Mapping
 import anyio.abc
 
-from .abc import BufferedByteStream, ExtraMapping, T_Attr
+from .abc import BufferedByteStream, ExtraMapping, T_Attr, ExtraListener
 import socket
 
 V2_MAGIC = b'\r\n\r\n\x00\r\nQUIT\n'
@@ -135,12 +135,13 @@ class ProxyProtocolMixedListener(
         return await self.listener.aclose()
 
 class ProxyProtocolV2Listener(
-    anyio.abc.Listener
+    ExtraListener
 ):
     def __init__(
         self,
         listener: anyio.abc.Listener,
     ):
+        super().__init__(listener)
         self.listener = listener
 
     async def serve(

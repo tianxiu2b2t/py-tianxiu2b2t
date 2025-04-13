@@ -3,15 +3,18 @@ from collections.abc import Callable
 from typing import Any
 import anyio.abc
 
+from .abc import ExtraListener
+
 
 class FixedSocketListener(
-    anyio.abc.Listener
+    ExtraListener
 ):
     def __init__(
         self,
         listener: anyio.abc.Listener
     ):
-        self._listener = listener
+        super().__init__(listener)
+        self.listener = listener
         
     async def serve(
         self,
@@ -20,9 +23,9 @@ class FixedSocketListener(
     ) -> None:
         while True:
             try:
-                await self._listener.serve(handler, task_group)
+                await self.listener.serve(handler, task_group)
             except asyncio.CancelledError:
                 break
 
     async def aclose(self) -> None:
-        await self._listener.aclose()
+        await self.listener.aclose()
