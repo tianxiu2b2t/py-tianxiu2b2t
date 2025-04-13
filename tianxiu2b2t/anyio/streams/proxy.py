@@ -54,12 +54,13 @@ class ProxyProtocolStream(
         return self._extra
 
 class ProxyProtocolV1Listener(
-    anyio.abc.Listener
+    ExtraListener
 ):
     def __init__(
         self,
         listener: anyio.abc.Listener,
     ):
+        super().__init__(listener)
         self.listener = listener
 
     async def serve(
@@ -92,12 +93,13 @@ class ProxyProtocolV1Listener(
         return await self.listener.aclose()
 
 class ProxyProtocolMixedListener(
-    anyio.abc.Listener
+    ExtraListener
 ):
     def __init__(
         self,
         listener: anyio.abc.Listener,
     ):
+        super().__init__(listener)
         self.listener = listener
 
     async def serve(
