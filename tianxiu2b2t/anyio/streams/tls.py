@@ -61,6 +61,8 @@ class SSLContextMapper:
         hostname: str,
         context: ssl.SSLContext
     ) -> None:
+        if self.default_context is None:
+            self.default_context = context
         self.contexts[self._wildcard_to_regex(hostname)] = context
 
     def get_context(
