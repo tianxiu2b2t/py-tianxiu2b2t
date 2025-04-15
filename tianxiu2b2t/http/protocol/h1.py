@@ -174,7 +174,10 @@ class H1Connection(
         while True:
             try:
                 event = self.conn.next_event()
-            except h11.LocalProtocolError:
+            except (
+                h11.LocalProtocolError,
+                h11.RemoteProtocolError
+            ):
                 await self.raw_send(
                     h11.ConnectionClosed()
                 )
