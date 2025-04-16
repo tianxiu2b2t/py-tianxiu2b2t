@@ -1,7 +1,7 @@
 from setuptools import setup, find_namespace_packages
 
 def read_requirements():
-    with open('requirements.txt', 'r', encoding='utf-8') as f:
+    with open('requirements.txt', 'r', encoding='utf-16le') as f:
         return [
             line.strip()
             for line in f.readlines()
