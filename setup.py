@@ -3,7 +3,9 @@ from setuptools import setup, find_namespace_packages
 def read_requirements():
     with open('requirements.txt', 'r', encoding='utf-16le') as f:
         return [
-            line.strip()
+            ''.join((
+                char for char in line.strip() if char.isascii()
+            ))
             for line in f.readlines()
             if not line in (
                 'setuptools'
