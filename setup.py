@@ -14,7 +14,7 @@ def read_requirements():
 
 setup(
     name='tianxiu2b2t-utils',
-    version='0.1.30',
+    version='0.1.31',
     description='A collection of utilities for the tianxiu2b2t packages',
     url='https://github.com/tianxiu2b2t/py-tianxiu2b2t',
     author='tianxiu2b2t',

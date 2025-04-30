@@ -39,6 +39,19 @@ class Queue(Generic[T]):
         if self._getter_waiters:
             self._getter_waiters.popleft().set()
 
+    def put_nowait(self, item: T) -> None:
+        """
+        Put an item into the queue without waiting.
+
+        If the queue is full (i.e., its size reaches maxsize), this method will raise a Full exception.
+        """
+        if self._maxsize != 0 and len(self._queue) >= self._maxsize:
+            raise ValueError("Queue is full")
+        
+        self._queue.append(item)
+        if self._getter_waiters:
+            self._getter_waiters.popleft().set()
+
     async def get(self) -> T:
         """
         Get an item from the queue.
@@ -53,6 +66,18 @@ class Queue(Generic[T]):
         # Notify any waiting putters that space is available
         if self._putter_waiters:
             self._putter_waiters.popleft().set()
+        return item
+
+    def get_nowait(self) -> T:
+        """
+        Get an item from the queue without waiting.
+
+        If the queue is empty, this method will raise a Empty exception.
+        """
+        if not self._queue:
+            raise ValueError("Queue is empty")
+        item = self._queue.popleft()
+        
         return item
 
     def empty(self) -> bool:
