@@ -1,6 +1,6 @@
 [project]
 name = "tianxiu2b2t"
-version = "0.1.31"
+version = "0.1.31.1"
 description = "A collection of utilities for the tianxiu2b2t packages."
 authors = [
     {name = "tianxiu2b2t", email = "atianxiua@163.com"},
