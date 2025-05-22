@@ -116,4 +116,4 @@ class Queue(Generic[T]):
         """
         Return a string representation of the queue.
         """
-        return f"Queue(maxsize={self._maxsize}, qsize={self.qsize()})"
+        return f"Queue(maxsize={self._maxsize}, qsize={self.qsize()}, putter_waiters={len(self._putter_waiters)}, getter_waiters={len(self._getter_waiters)})"

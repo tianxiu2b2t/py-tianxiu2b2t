@@ -6,7 +6,7 @@ from typing import Any, Callable, Coroutine, TypeVar, Union
 
 import anyio.streams.memory
 
-from ...anyio.streams.abc import BufferedByteStream
+from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
 
 
 Handler = Callable[['Stream'], Any]

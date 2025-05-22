@@ -7,10 +7,10 @@ import h2.config
 import h2.events
 import h2.settings
 
-from .streams import ByteReadStream, HTTPStream
-from .types import Header, Connection, Handler
-from .exceptions import HTTPHeaderSentException
-from ...anyio.streams import BufferedByteStream
+from tianxiu2b2t.http.protocol.streams import ByteReadStream, HTTPStream
+from tianxiu2b2t.http.protocol.types import Header, Connection, Handler
+from tianxiu2b2t.http.protocol.exceptions import HTTPHeaderSentException
+from tianxiu2b2t.anyio.streams import BufferedByteStream
 
 DEFAULT_SETTINGS = {
     h2.settings.SettingCodes.MAX_CONCURRENT_STREAMS: 1,

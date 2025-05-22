@@ -8,15 +8,15 @@ import anyio
 import anyio.abc
 import h11
 
-from ...anyio.lock import WaitLock
-from .exceptions import HTTPHeaderSentException
+from tianxiu2b2t.anyio.lock import WaitLock
+from tianxiu2b2t.http.protocol.exceptions import HTTPHeaderSentException
 
-from .websockets import WebSocketConnection
-from .streams import ZERO_STREAM_ID, ByteReadStream, HTTPStream
-from .types import Header, Connection, Handler
-from ...anyio.streams import BufferedByteStream
-from ...logging import logging
-from ...anyio import exceptions
+from tianxiu2b2t.http.protocol.websockets import WebSocketConnection
+from tianxiu2b2t.http.protocol.streams import ZERO_STREAM_ID, ByteReadStream, HTTPStream
+from tianxiu2b2t.http.protocol.types import Header, Connection, Handler
+from tianxiu2b2t.anyio.streams import BufferedByteStream
+from tianxiu2b2t.logging import logging
+from tianxiu2b2t.anyio import exceptions
     
 class H1Connection(
     Connection

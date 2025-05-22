@@ -4,11 +4,11 @@ from typing import Callable, Coroutine, Optional
 import anyio
 import anyio.abc
 
-from .streams import HTTPStream, WebSocketReadStream, WebSocketStream
-from .types import Handler, Connection, WebSocketItemBytes, WebSocketItemString
+from tianxiu2b2t.http.protocol.streams import HTTPStream, WebSocketReadStream, WebSocketStream
+from tianxiu2b2t.http.protocol.types import Handler, Connection, WebSocketItemBytes, WebSocketItemString
 
-from ...anyio.streams.abc import BufferedByteStream
-from ...utils import varint_bytes
+from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
+from tianxiu2b2t.utils import varint_bytes
 
 import wsproto.connection
 import wsproto.extensions

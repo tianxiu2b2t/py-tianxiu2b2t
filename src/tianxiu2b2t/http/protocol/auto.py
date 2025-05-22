@@ -1,7 +1,7 @@
-from .h1 import H1Connection
-from .h2 import H2Connection
-from ...anyio.streams.abc import BufferedByteStream
-from .types import Handler
+from tianxiu2b2t.http.protocol.h1 import H1Connection
+from tianxiu2b2t.http.protocol.h2 import H2Connection
+from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
+from tianxiu2b2t.http.protocol.types import Handler
 
 
 async def auto(

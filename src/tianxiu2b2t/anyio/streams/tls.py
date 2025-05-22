@@ -4,7 +4,7 @@ import enum
 from functools import wraps
 import re
 import ssl
-from typing import Any, Callable, Mapping, Optional, TypeVar
+from typing import Any, Callable, Mapping, Optional
 import anyio.abc
 import anyio.streams.tls
 

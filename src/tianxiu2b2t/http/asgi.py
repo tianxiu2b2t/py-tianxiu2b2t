@@ -11,12 +11,11 @@ from urllib.parse import unquote
 import anyio
 import anyio.abc
 
-from ..anyio.streams.abc import BufferedByteStream
-from ..anyio.exceptions import ALLStreamError
-from .protocol import auto, exceptions
-from .protocol.streams import HTTPStream, WebSocketStream
-
-from .protocol.types import Stream
+from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
+from tianxiu2b2t.anyio.exceptions import ALLStreamError
+from tianxiu2b2t.http.protocol import auto
+from tianxiu2b2t.http.protocol.streams import HTTPStream, WebSocketStream
+from tianxiu2b2t.http.protocol.types import Stream
 
 
 logger = logging.getLogger("tianxiu2b2t.http.asgi")

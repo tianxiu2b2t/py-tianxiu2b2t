@@ -1,7 +1,17 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Coroutine
 
-from .types import Header, ReadStream, Stream, WebSocketItem, SendDataWithStreamId, SendResponseWithStreamId, SendDataWithoutStreamId, SendResponseWithoutStreamId
+from tianxiu2b2t.http.protocol.types import (
+    Header, 
+    ReadStream, 
+    Stream, 
+    WebSocketItem, 
+    SendDataWithStreamId, 
+    SendResponseWithStreamId, 
+    SendDataWithoutStreamId, 
+    SendResponseWithoutStreamId
+)
+
 
 ZERO_STREAM_ID = -1
 
