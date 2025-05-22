@@ -1,0 +1,18 @@
+[project]
+name = "tianxiu2b2t"
+version = "0.1.31"
+description = "A collection of utilities for the tianxiu2b2t packages."
+authors = [
+    {name = "tianxiu2b2t", email = "atianxiua@163.com"},
+]
+dependencies = ["anyio>=4.9.0", "dotenv>=0.9.9", "h11>=0.16.0", "h2>=4.2.0", "wsproto>=1.2.0"]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true

@@ -3,6 +3,9 @@
 *.egg-info
 .venv
 dist
+.pdm-python
+.pdm-build
 test_*
 .env
 .env.*
+pdm.lock
