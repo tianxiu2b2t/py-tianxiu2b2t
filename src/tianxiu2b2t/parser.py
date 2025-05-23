@@ -2,13 +2,14 @@ import json
 from typing import Any
 
 
-class ConfigParser:
+class ConfigParser[T]:
     def __init__(
         self,
         value: Any
     ):
         self._required = False
         self._value = value
+        self._default: Any = None
 
     def required(self):
         self._required = True
@@ -17,27 +18,39 @@ class ConfigParser:
     def not_required(self):
         self._required = False
         return self
+    
+    def default(self, value: Any):
+        self._default = value
+        return self
 
     def as_int(self):
         self._check_required()
-        return int(self._value)
+        return int(self._get_value())
     
     def as_float(self):
         self._check_required()
-        return float(self._value)
+        return float(self._get_value())
     
     def as_bool(self):
-        self._check_required()
-        return bool(self._value)
+        return self.as_str().lower() in ("true", "t", "y", "yes", "1", "on", "enabled", "enable", "active", "activated")
     
     def as_str(self):
         self._check_required()
-        return str(self._value)
+        return str(self._get_value())
     
     def as_json(self):
         self._check_required()
-        return json.loads(self._value)
+        return json.loads(self._get_value())
+    
+    def as_list(self) -> list[Any]:
+        return self.as_json()
+    
+    def as_dict(self) -> dict[str, Any]:
+        return self.as_json()
     
     def _check_required(self):
-        if self._value is None and self._required:
+        if self._get_value() is None and self._required:
             raise ValueError("Value is required")
+        
+    def _get_value(self):
+        return self._value if self._value is not None else self._default
