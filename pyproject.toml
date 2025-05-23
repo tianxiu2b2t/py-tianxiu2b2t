@@ -1,5 +1,5 @@
 [project]
-name = "tianxiu2b2t"
+name = "tianxiu2b2t-utils"
 version = "0.1.32"
 description = "A collection of utilities for the tianxiu2b2t packages."
 authors = [
