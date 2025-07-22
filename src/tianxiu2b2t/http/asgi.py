@@ -3,7 +3,6 @@ from collections import deque
 from dataclasses import dataclass
 import io
 import logging
-import ssl
 import traceback
 from typing import Any, Awaitable, Callable, MutableMapping, Optional, TypedDict
 from urllib.parse import unquote
@@ -111,7 +110,7 @@ class HTTPRequestResponseCycle(RequestResponseCycle):
             self.disconnect = True
             self.receive_message.set()
             return
-        except:
+        except:  # noqa: E722
             logger.exception("Error in ASGI application")
             logger.exception(traceback.format_exc())
 
@@ -142,7 +141,7 @@ class HTTPRequestResponseCycle(RequestResponseCycle):
         
         return {
             "type": "http.request",
-            "body": await self.connection.reader.receive(),
+            "body": data,
             "more_body": more_body
         }
 
@@ -184,7 +183,7 @@ class WebSocketRequestResponseCycle(RequestResponseCycle):
             await app(self.scope, self.receive, self.send)
         except ALLStreamError:
             return
-        except:
+        except:  # noqa: E722
             logger.exception("Error in ASGI application")
             logger.exception(traceback.format_exc())
 

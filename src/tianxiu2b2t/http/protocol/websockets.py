@@ -11,7 +11,6 @@ from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
 from tianxiu2b2t.utils import varint_bytes
 
 import wsproto.connection
-import wsproto.extensions
 
 
 class WebSocketConnection(

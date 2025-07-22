@@ -2,9 +2,9 @@ import abc
 from collections import deque
 from dataclasses import dataclass
 import io
-from typing import Any, Callable, Coroutine, TypeVar, Union
+from typing import Any, Callable, Coroutine, Generic, TypeVar, Union
 
-import anyio.streams.memory
+import anyio
 
 from tianxiu2b2t.anyio.streams.abc import BufferedByteStream
 
@@ -73,7 +73,7 @@ class Stream(
     server: tuple[str, int]
     reader: 'ReadStream'
 
-class ReadStream[T]:
+class ReadStream(Generic[T]):
     def __init__(
         self,
     ):

@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Callable, Coroutine
 import anyio
 import anyio.abc
 import h2.connection
@@ -58,7 +57,7 @@ class H2Connection(
                 break
             try:
                 data = await self.stream.receive()
-            except:
+            except:  # noqa: E722
                 break
 
             for event in self.conn.receive_data(data):

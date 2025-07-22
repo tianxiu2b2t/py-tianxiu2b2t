@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from functools import wraps
 import ipaddress
-import traceback
 from typing import Any, Callable, Mapping
 import anyio.abc
 
@@ -75,7 +74,7 @@ class ProxyProtocolV1Listener(
             stream = BufferedByteStream(stream)
             try:
                 stream = await v1(stream)
-            except:
+            except:  # noqa: E722
                 ...
 
             if isinstance(stream, BufferedByteStream):
@@ -114,11 +113,11 @@ class ProxyProtocolMixedListener(
             stream = BufferedByteStream(stream)
             try:
                 stream = await v1(stream)
-            except:
+            except:  # noqa: E722
                 stream = BufferedByteStream(stream)
                 try:
                     stream = await v2(stream)
-                except:
+                except:  # noqa: E722
                     ...
             if isinstance(stream, BufferedByteStream):
                 return await handler(BufferedByteStream(stream))
@@ -158,7 +157,7 @@ class ProxyProtocolV2Listener(
             stream = BufferedByteStream(stream)
             try:
                 stream = await v2(stream)
-            except:
+            except:  # noqa: E722
                 ...
 
             if isinstance(stream, BufferedByteStream):
@@ -231,19 +230,14 @@ async def v1(
     buffer = (await stream.readuntil(b'\r\n'))[:-2]
     protocol, dest_addr, source_addr, dest_port, source_port = buffer.decode().split(' ')
 
-    af = socket.AF_UNSPEC
     kind = socket.SOCK_RAW
     if protocol == 'TCP4':
-        af = socket.AF_INET
         kind = socket.SOCK_STREAM
     elif protocol == 'TCP6':
-        af = socket.AF_INET6
         kind = socket.SOCK_STREAM
     elif protocol == 'UDP4':
-        af = socket.AF_INET
         kind = socket.SOCK_DGRAM
     elif protocol == 'UDP6':
-        af = socket.AF_INET6
         kind = socket.SOCK_DGRAM
     else:
         raise UnsupportedSocketKind("Unsupported socket kind")

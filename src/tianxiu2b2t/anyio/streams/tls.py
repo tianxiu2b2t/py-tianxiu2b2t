@@ -143,7 +143,7 @@ class AutoTLSListener(
             extra = TLSExtraData()
             try:
                 wrapper_stream = await self.auto_tls_wrap(stream, extra)
-            except Exception as exc:
+            except Exception:
                 await anyio.aclose_forcefully(stream)
             else:
                 await handler(TLSStream(

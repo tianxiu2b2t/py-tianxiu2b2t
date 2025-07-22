@@ -1,5 +1,4 @@
 import base64
-from dataclasses import dataclass
 import hashlib
 import traceback
 from typing import Optional
@@ -43,7 +42,7 @@ class H1Connection(
     ):
         try:
             await self.handler(request)
-        except:
+        except:  # noqa: E722
             logging.exception(traceback.format_exc())
 
     async def process(

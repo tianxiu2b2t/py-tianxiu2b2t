@@ -1,8 +1,9 @@
 import json
-from typing import Any
+from typing import Any, TypeVar, Generic
 
+T = TypeVar('T')
 
-class ConfigParser[T]:
+class ConfigParser(Generic[T]):
     def __init__(
         self,
         value: Any
