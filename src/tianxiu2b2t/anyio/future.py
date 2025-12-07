@@ -1,12 +1,13 @@
-from typing import Any
+from typing import Any, Generic, TypeVar
 import anyio
 
+T = TypeVar('T')
 
-class Future:
+class Future(Generic[T]):
     def __init__(
         self,
     ):
-        self._result = None
+        self._result: T = None # type: ignore
         self._setted = False
         self._event = anyio.Event()
     
